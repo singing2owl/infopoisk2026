@@ -9,8 +9,8 @@
 Я надеюсь, что я всё нужное выгрузила, но если вдруг что, изначально я работала с клонированным [открытым репозиторием](https://github.com/hda-technical/dancebooks) сайта библиографии.
 ## Как запускать
 
-В файле [infopoisk_search](https://github.com/singing2owl/infopoisk2026/blob/main/infopoisk_search.py) реализован частотный и bm25-поиск с помощью словарей. Можно запустить программу и искать с помощью стандартного ввода.
+В файле [infopoisk_search.py](https://github.com/singing2owl/infopoisk2026/blob/main/infopoisk_search.py) реализован частотный и bm25-поиск с помощью словарей. Можно запустить программу и искать с помощью стандартного ввода.
 
-В файле [infopoisk_search_matrix](https://github.com/singing2owl/infopoisk2026/blob/main/infopoisk_search_matrix.py) всё так же, только поиск реализован с помощью матриц.
+В файле [infopoisk_search_matrix.py](https://github.com/singing2owl/infopoisk2026/blob/main/infopoisk_search_matrix.py) всё так же, только поиск реализован с помощью матриц.
 
 В обоих файлах используется код из соседних файлов репозитория.
