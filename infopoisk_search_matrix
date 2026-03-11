@@ -1,0 +1,147 @@
+import numpy as np
+from scipy.sparse import csr_matrix
+from collections import Counter
+
+from dancebooks import bib_parser, config
+from dancebooks.config import config
+import infopoisk_data_prep
+
+def build_term_doc_matrix(corpus):
+    """
+    corpus: dict[doc_id -> list(tokens)]
+
+    returns:
+        matrix (csr_matrix)
+        vocab (term -> term_id)
+        doc_ids (list)
+    """
+
+    doc_ids = list(corpus.keys())
+
+    vocab = {}
+    rows = []
+    cols = []
+    data = []
+
+    for col, doc_id in enumerate(doc_ids):
+
+        tokens = corpus[doc_id]
+        counts = Counter(tokens)
+
+        for token, tf in counts.items():
+
+            if token not in vocab:
+                vocab[token] = len(vocab)
+
+            row = vocab[token]
+
+            rows.append(row)
+            cols.append(col)
+            data.append(tf)
+
+    matrix = csr_matrix((data, (rows, cols)), shape=(len(vocab), len(doc_ids)))
+
+    return matrix, vocab, doc_ids
+
+def search_tf_matrix(matrix, vocab, doc_ids, query_tokens, k=5):
+
+    q = np.zeros(len(vocab))
+
+    for token in query_tokens:
+        if token in vocab:
+            q[vocab[token]] += 1
+
+    scores = q @ matrix
+
+    top_idx = np.argsort(scores)[::-1][:k]
+
+    results = [(doc_ids[i], scores[i]) for i in top_idx if scores[i] > 0]
+
+    return results
+
+def compute_bm25_stats(matrix):
+
+    N = matrix.shape[1]
+    
+    doc_len = np.array(matrix.sum(axis=0)).flatten()
+    
+    avgdl = doc_len.mean()
+    
+    df = np.diff(matrix.indptr)
+    
+    idf = np.log((N - df + 0.5) / (df + 0.5) + 1)
+    
+    return doc_len, avgdl, idf
+
+def search_bm25_matrix(matrix, vocab, doc_ids, query_tokens,
+                       doc_len, avgdl, idf,
+                       k=5, k1=1.5, b=0.75):
+
+    scores = np.zeros(matrix.shape[1])
+
+    for token in query_tokens:
+
+        if token not in vocab:
+            continue
+
+        term_id = vocab[token]
+
+        tf = matrix.getrow(term_id).toarray().flatten()
+
+        denom = tf + k1 * (1 - b + b * doc_len / avgdl)
+
+        score = idf[term_id] * (tf * (k1 + 1)) / denom
+
+        scores += score
+
+    top_idx = np.argsort(scores)[::-1][:k]
+
+    results = [(doc_ids[i], scores[i]) for i in top_idx if scores[i] > 0]
+
+    return results
+
+def preprocess(text):
+    return infopoisk_data_prep.lemmatize_with_cleaning(text, lang=("ru", "en"))
+
+if __name__ == "__main__":
+
+    items, item_index = bib_parser.BibParser().parse_folder(config.parser.bibdata_dir)
+    param_list = ['title',
+                  'author',
+                  'altauthor',
+                  'booktitle',
+                  'incipit',
+                  'journaltitle',
+                  'keywords',
+                  'langid', 
+                  'location',
+                  'origauthor',
+                  'origlanguage',
+                  'pseudo_author',
+                  'translator',
+                  'type']
+    
+    # This is for russian data
+    # TODO: make it more general for other languages (e.g. by using lang_map from infopoisk_data_prep)
+    ru_data_dict = infopoisk_data_prep.parse_folder_into_json(config.parser.bibdata_dir, param_list)["russian.bib"]
+    
+    # Preprocess and lemmatize each document
+    corpus = {doc_id: preprocess(text) for doc_id, text in ru_data_dict.items()}
+
+    matrix, vocab, doc_ids = build_term_doc_matrix(corpus)
+
+    query = input("Enter search query: ")
+    search_type = input("Choose search type (tf/bm25): ").strip().lower()
+    query_tokens = preprocess(query)
+    if search_type == "tf":
+        results = search_tf_matrix(matrix, vocab, doc_ids, query_tokens)
+    elif search_type == "bm25":
+        doc_len, avgdl, idf = compute_bm25_stats(matrix)
+        results = search_bm25_matrix(matrix, vocab, doc_ids, query_tokens, doc_len, avgdl, idf)
+    else:
+        print("Invalid search type. Defaulting to TF.")
+        results = search_tf_matrix(matrix, vocab, doc_ids, query_tokens)
+
+    print("Search results:")
+    for doc_id, score in results:
+        print(f"{doc_id}: {score}")
